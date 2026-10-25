@@ -1,0 +1,54 @@
+diff --git a/src/communication.cpp b/src/communication.cpp
+index a2c11c6..7d81917 100644
+--- a/src/communication.cpp
++++ b/src/communication.cpp
+@@ -596,6 +596,8 @@ void RACommunicationClass::saveWifiSettings(String jsonResult)
+   strcpy(routeur.password, doc["password"]);
+   routeur.utilisationSAP = doc["utilisationSAP"] == "true";
+   doc.clear();
++  RAPrgEEprom.sauve_param();
++  pause_inter = 1; // relance l'interruption triac arrêtée au début de la fonction
+ }
+ 
+ void RACommunicationClass::saveSystemSettings(String jsonResult)
+diff --git a/src/prgEEprom.cpp b/src/prgEEprom.cpp
+index 389a7e3..88c824f 100644
+--- a/src/prgEEprom.cpp
++++ b/src/prgEEprom.cpp
+@@ -6,18 +6,22 @@
+ #include <EEPROM.h>
+ #include <stdbool.h>
+ #include "communication.h"
+-#define EEPROM_SIZE 450
++#define EEPROM_SIZE 1024    // doit rester >= sizeof(param) + 1 (marqueur) ; v1.6 = 493 octets au maximum
++#define EEPROM_MARQUEUR 124 // changer cette valeur force la réinitialisation des paramètres au prochain démarrage
++
++// EEPROM.put()/get() ne font RIEN, sans erreur, si la structure dépasse EEPROM_SIZE.
++// Ce test fait échouer la compilation au lieu de perdre les réglages en silence.
++static_assert(sizeof(param) + 1 <= EEPROM_SIZE, "EEPROM_SIZE trop petit pour struct param (settings.h)");
+ 
+ void RAPrgEEpromClass::setup()
+ {
+   EEPROM.begin(EEPROM_SIZE);
+ 
+-  if (EEPROM.read(0) != 123)
++  if (EEPROM.read(0) != EEPROM_MARQUEUR)
+   {
+     sauve_param(); // action qui se fait au premier démarrage sauve les parametres par défaut
+-    RACommunication.print(1, "Enregistrement dans l'EEprom et redémarrage", true);
+-    EEPROM.end(); // pour liberer la memoire
+-    delay(5000);
++    RACommunication.print(1, "Enregistrement dans l'EEprom", true);
++    // pas de EEPROM.end() ici : il remet la taille à 0 et les sauvegardes suivantes seraient ignorées jusqu'au prochain reboot
+   }
+ 
+   delay(1000);
+@@ -35,7 +39,7 @@ void RAPrgEEpromClass::setup()
+ 
+ void RAPrgEEpromClass::sauve_param()
+ {
+-  EEPROM.writeByte(0, 123); // valeur pour la premiere sauvegarde
++  EEPROM.writeByte(0, EEPROM_MARQUEUR); // valeur pour la premiere sauvegarde
+   EEPROM.put(1, routeur);
+   EEPROM.commit(); // pour liberer la memoire
+   paramchange = 1; // communication au format mqtt pour le reseau domotique 1 pour l'envoi des parametres
