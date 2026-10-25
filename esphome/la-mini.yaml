@@ -128,25 +128,31 @@ i2c:
 
 font:
   - file: "gfonts://Roboto"
-    id: font12
-    size: 12
+    id: font10
+    size: 10
 
+# Écran OLED 0,66" 64x48 (shield Wemos D1 mini) : 4 lignes de ~10 caractères, 2 pages alternées toutes les 3 s.
 display:
   - platform: ssd1306_i2c
-    model: "SSD1306 128x64"
+    model: "SSD1306 64x48"
     address: 0x3C
     id: oled
     update_interval: 1s
     lambda: |-
-      it.printf(0, 0, id(font12), "%.2f V  %.1f A", id(bv).state, id(bc_smoothed).state);
-      it.printf(0, 13, id(font12), "Sortie %.0f %%  cible %.1f A", id(offsr_output).state * 100.0f, id(offsr_target).state);
-      it.printf(0, 26, id(font12), "T %.1f C", id(temp_ds).state);
-      const char *src = "Autonome";
+      const char *src = "AUTO";
       auto idx = id(source_mode).active_index();
       if (idx.has_value() && *idx == 1) src = "BLE";
       if (idx.has_value() && *idx == 2) src = "HA";
-      it.printf(0, 39, id(font12), "Source %s %s", src, id(source_ok).state ? "OK" : "PERDUE");
-      it.printf(0, 52, id(font12), "%s", id(activation).state ? "ROUTAGE ON" : "routage off");
+      if ((millis() / 3000) % 2 == 0) {
+        it.printf(0, 0, id(font10), "%.2f V", id(bv).state);
+        it.printf(0, 12, id(font10), "%.1f A", id(bc_smoothed).state);
+        it.printf(0, 24, id(font10), "Sortie %.0f%%", id(offsr_output).state * 100.0f);
+        it.printf(0, 36, id(font10), "%s", id(activation).state ? "ROUTAGE ON" : "routage off");
+      } else {
+        it.printf(0, 0, id(font10), "%s %s", src, id(source_ok).state ? "OK" : "PERDUE");
+        it.printf(0, 12, id(font10), "Cible %.1f A", id(offsr_target).state);
+        it.printf(0, 24, id(font10), "T %.1f C", id(temp_ds).state);
+      }
 
 ###################################
 ### Sortie triac
