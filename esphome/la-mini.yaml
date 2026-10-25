@@ -1,0 +1,533 @@
+##############################################################################
+# LA MINI sous ESPHome : routeur solaire off-grid, batterie 24 V (Boisezon)
+# Matériel : PCB mini V1.0b (ESP32 Wemos D1 mini32, triac BTA41 + MOC3021S, pince Hall DC,
+#            diviseur de tension batterie, OLED SSD1306, DS18B20). Pas de PZEM, pas de sortie 2.
+# Régulation : composant `offsr` de SeByDocKy (PID sur le courant batterie, 3 consignes par zone de tension).
+#
+# MISE EN ROUTE
+#   1. ./prepare-offsr.sh          -> crée components/offsrmini (24 V, output_min = 0) ; components/offsr de l'autre routeur n'est pas touché
+#   2. renseigner wifi_ssid / wifi_password plus bas (en clair : ne pas publier ce fichier rempli)
+#   3. premier flash par USB, banc d'essai : ampoule ou radiateur, JAMAIS la batterie réelle d'abord
+#   4. calibrer (voir plus bas), puis seulement activer `Routeur activation`
+#
+# CALIBRATION (valeurs de départ = estimations, pas des mesures)
+#   - Tension : comparer `Tension batterie locale` à un multimètre ; nouveau gain = gain x V_multimètre / V_affichée.
+#   - Zéro pince : câble batterie hors charge (courant nul vraiment), régler `Pince zéro` pour lire 0.00 A.
+#   - Gain pince : avec une charge connue (pince multimètre en série), nouveau gain = gain x I_réelle / I_affichée.
+#   - Sens : si la batterie CHARGE et que `Courant batterie` est négatif, activer `Pince sens inversé`.
+#     offsr suppose courant > 0 = batterie en charge.
+#   - Ces réglages sont mémorisés en flash ; changer les substitutions ci-dessous n'écrase PAS une valeur déjà
+#     mémorisée (effacer la flash ou modifier la valeur dans l'interface).
+#
+# SÉCURITÉ INTÉGRÉE
+#   - Si la source de mesure choisie est perdue (BLE coupé, HA absent, diviseur débranché), la tension utilisée
+#     passe à 0 V : offsr force alors la sortie à 0 (tension < seuil de démarrage). Un `timeout` seul ne suffit pas :
+#     offsr ne se déclenche que sur un nouveau courant et resterait figé sur la dernière sortie.
+#   - Coupure si la sonde DS18B20 dépasse `Température max`.
+#   - `Routeur activation` est OFF par défaut après un premier flash.
+##############################################################################
+
+substitutions:
+  # ---- identité ----
+  name: "la-mini-boisezon"
+  friendly_name: "La Mini Boisezon"
+  time_timezone: "Europe/Paris"
+
+  # ---- réseau (en clair, pas de !secret) ----
+  wifi_ssid: "A_REMPLIR"
+  wifi_password: "A_REMPLIR"
+
+  # ---- broches du PCB V1.0b (identiques au firmware Seby) ----
+  pin_triac: "GPIO27"
+  pin_zero_cross: "GPIO33"
+  pin_hall: "GPIO32"       # signal pince Hall
+  pin_hall_ref: "GPIO34"   # référence 2,5 V de la pince
+  pin_vbat: "GPIO36"       # diviseur tension batterie
+  pin_ds18b20: "GPIO23"
+  pin_sda: "GPIO21"
+  pin_scl: "GPIO22"
+
+  # ---- mesure autonome : valeurs de départ des réglages mémorisés ----
+  vbat_gain_default: "27.0"      # V batterie par volt ADC [Supposition : à calibrer]
+  # Pince HSTS016L 20 A : 2,5 V ± 0,625 V pour ± 20 A -> 20 / 0,625 = 32 A par volt (valeur constructeur, à affiner).
+  # Plage ADC utile ~ -19 A / +19 A : au-delà, l'ADC sature (~3,1 V) et la mesure est fausse sans erreur affichée.
+  clamp_gain_default: "32.0"     # A par volt de signal différentiel (Hall - réf)
+  clamp_zero_default: "0.0"      # A
+  temp_max_default: "80.0"       # °C, coupe `Routeur activation`
+
+  # ---- SmartShunt Victron en BLE (VictronConnect > Produit > Infos > clé de chiffrement) ----
+  smartshunt_mac: "AA:BB:CC:DD:EE:FF"
+  smartshunt_bindkey: "00000000000000000000000000000000"
+  ble_timeout: "20s"             # sans trame BLE pendant ce délai : source perdue
+
+  # ---- SmartShunt via Home Assistant (entités de ton HA ; NE PAS mettre le courant d'un MPPT) ----
+  ha_voltage_entity: "sensor.smartshunt_battery_voltage"
+  ha_current_entity: "sensor.smartshunt_battery_current"
+  ha_timeout: "60s"              # HA n'envoie que sur changement : ne pas descendre trop bas
+
+  # ---- régulation ----
+  dispatch_interval: "1s"        # cadence de calcul offsr (déclenché à chaque courant publié)
+  smooth_window: "3"             # lissage du courant (échantillons de dispatch_interval)
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  comment: "Routeur solaire off-grid 24 V - PCB mini V1.0b"
+
+esp32:
+  board: wemos_d1_mini32
+  framework:
+    type: esp-idf
+
+logger:
+  level: INFO
+
+wifi:
+  ssid: ${wifi_ssid}
+  password: ${wifi_password}
+  ap:
+
+captive_portal:
+
+mdns:
+
+# Native API sans chiffrement ni mot de passe : nécessaire pour l'intégration HA et le mode "SmartShunt via HA".
+# reboot_timeout: 0s -> pas de redémarrage de l'ESP quand HA est indisponible (mode autonome).
+api:
+  reboot_timeout: 0s
+
+ota:
+  - platform: esphome
+
+web_server:
+  port: 80
+  version: 3
+
+time:
+  - platform: sntp
+    id: sntp_time
+    timezone: ${time_timezone}
+
+external_components:
+  - source:
+      type: local
+      path: components
+    components: [offsrmini]   # copie renommée : le components/offsr de l'autre routeur reste intact
+
+  # Lecteur BLE des annonces Victron
+  - source: github://Fabian-Schmidt/esphome-victron_ble
+    refresh: 0s
+
+###################################
+### Bus, afficheur, polices
+###################################
+i2c:
+  sda: ${pin_sda}
+  scl: ${pin_scl}
+  scan: true
+
+font:
+  - file: "gfonts://Roboto"
+    id: font12
+    size: 12
+
+display:
+  - platform: ssd1306_i2c
+    model: "SSD1306 128x64"
+    address: 0x3C
+    id: oled
+    update_interval: 1s
+    lambda: |-
+      it.printf(0, 0, id(font12), "%.2f V  %.1f A", id(bv).state, id(bc_smoothed).state);
+      it.printf(0, 13, id(font12), "Sortie %.0f %%  cible %.1f A", id(offsr_output).state * 100.0f, id(offsr_target).state);
+      it.printf(0, 26, id(font12), "T %.1f C", id(temp_ds).state);
+      const char *src = "Autonome";
+      auto idx = id(source_mode).active_index();
+      if (idx.has_value() && *idx == 1) src = "BLE";
+      if (idx.has_value() && *idx == 2) src = "HA";
+      it.printf(0, 39, id(font12), "Source %s %s", src, id(source_ok).state ? "OK" : "PERDUE");
+      it.printf(0, 52, id(font12), "%s", id(activation).state ? "ROUTAGE ON" : "routage off");
+
+###################################
+### Sortie triac
+###################################
+output:
+  - platform: ac_dimmer
+    id: dimmer
+    gate_pin: ${pin_triac}
+    zero_cross_pin:
+      number: ${pin_zero_cross}
+      mode: INPUT_PULLUP
+    zero_cross_interrupt_type: FALLING   # comme le firmware Seby
+    method: leading pulse
+    min_power: 0.0
+    zero_means_zero: true
+
+# Commande manuelle de la puissance (curseur 0-100 %) : pour tester le triac sur le banc.
+# A utiliser UNIQUEMENT avec `Routeur gel de la régulation` = ON (sinon deux écritures sur la même sortie).
+# En gel : offsr n'écrit plus la sortie, donc plus aucune protection tension/source ; seule la coupure
+# `Surchauffe` ramène ce curseur à 0. Remettre le curseur à 0 avant de repasser en automatique.
+fan:
+  - platform: speed
+    id: manual_power
+    name: "Puissance manuelle"
+    output: dimmer
+    speed_count: 100
+    restore_mode: ALWAYS_OFF   # jamais de sortie forcée au démarrage
+
+###################################
+### Bluetooth : SmartShunt
+###################################
+esp32_ble_tracker:
+  scan_parameters:
+    active: false   # les annonces Victron sont passives
+
+victron_ble:
+  - id: smartshunt_ble
+    mac_address: ${smartshunt_mac}
+    bindkey: ${smartshunt_bindkey}
+
+###################################
+### OffSR
+###################################
+offsrmini:
+  - id: my_offsr1
+    battery_current_id: bc_smoothed
+    battery_voltage_id: bv
+    output_id: dimmer
+    # pas de power_id : pas de PZEM, la détection de coupure thermostat est désactivée
+
+###################################
+### Bus 1-Wire
+###################################
+one_wire:
+  - platform: gpio
+    pin: ${pin_ds18b20}
+
+###################################
+### Sources de mesure + réglages mémorisés
+###################################
+select:
+  - platform: template
+    id: source_mode
+    name: "Source de mesure"
+    optimistic: true
+    restore_value: true
+    options:
+      - "Autonome (pince + diviseur)"
+      - "SmartShunt BLE"
+      - "SmartShunt via HA"
+    initial_option: "Autonome (pince + diviseur)"
+    entity_category: config
+
+number:
+  - platform: template
+    id: cal_vbat_gain
+    name: "Tension : gain diviseur"
+    optimistic: true
+    restore_value: true
+    initial_value: ${vbat_gain_default}
+    min_value: 5.0
+    max_value: 60.0
+    step: 0.01
+    mode: box
+    entity_category: config
+
+  - platform: template
+    id: cal_clamp_gain
+    name: "Pince : gain (A/V)"
+    optimistic: true
+    restore_value: true
+    initial_value: ${clamp_gain_default}
+    min_value: 1.0
+    max_value: 200.0
+    step: 0.01
+    mode: box
+    entity_category: config
+
+  - platform: template
+    id: cal_clamp_zero
+    name: "Pince : zéro (A)"
+    optimistic: true
+    restore_value: true
+    initial_value: ${clamp_zero_default}
+    min_value: -20.0
+    max_value: 20.0
+    step: 0.01
+    mode: box
+    entity_category: config
+
+  - platform: template
+    id: cal_temp_max
+    name: "Température max"
+    optimistic: true
+    restore_value: true
+    initial_value: ${temp_max_default}
+    min_value: 30.0
+    max_value: 120.0
+    step: 1.0
+    unit_of_measurement: "°C"
+    mode: box
+    entity_category: config
+
+  # Réglages offsr (consignes, seuils, PID, output_min/max) : plus bas, plateforme offsr.
+  - platform: offsrmini
+    offsr_id: my_offsr1
+    charging_setpoint:
+      name: "Consigne courant : charge (A)"
+      web_server: { sorting_weight: 100 }
+    absorbing_setpoint:
+      name: "Consigne courant : absorption (A)"
+      web_server: { sorting_weight: 110 }
+    floating_setpoint:
+      name: "Consigne courant : floating (A)"
+      web_server: { sorting_weight: 120 }
+    starting_battery_voltage:
+      name: "Tension de démarrage (V)"
+      web_server: { sorting_weight: 60 }
+    discharged_battery_voltage:
+      name: "Tension seuil déchargée (V)"
+      web_server: { sorting_weight: 70 }
+    charged_battery_voltage:
+      name: "Tension seuil chargée (V)"
+      web_server: { sorting_weight: 80 }
+    kp:
+      name: "PID Kp"
+      web_server: { sorting_weight: 140 }
+    ki:
+      name: "PID Ki"
+      web_server: { sorting_weight: 150 }
+    kd:
+      name: "PID Kd"
+      web_server: { sorting_weight: 160 }
+    output_min:
+      name: "Sortie min"
+      web_server: { sorting_weight: 180 }
+    output_max:
+      name: "Sortie max"
+      web_server: { sorting_weight: 190 }
+
+switch:
+  - platform: template
+    id: clamp_invert
+    name: "Pince : sens inversé"
+    optimistic: true
+    restore_mode: RESTORE_DEFAULT_OFF
+    entity_category: config
+
+  - platform: offsrmini
+    offsr_id: my_offsr1
+    activation:
+      name: "Routeur activation"
+      id: activation
+      web_server: { sorting_weight: 10 }
+    manual_override:
+      name: "Routeur gel de la régulation"
+      web_server: { sorting_weight: 20 }
+    pid_mode:
+      name: "Routeur mode PID complet"
+      web_server: { sorting_weight: 30 }
+    reverse:
+      name: "Routeur sens inversé"
+      web_server: { sorting_weight: 40 }
+
+###################################
+### Capteurs
+###################################
+sensor:
+  # ----- mesures brutes ADC (volts calibrés eFuse, atténuation 12 dB ~ 0-3,1 V) -----
+  - platform: adc
+    id: adc_vbat
+    pin: ${pin_vbat}
+    name: "ADC tension (V)"
+    attenuation: 12db
+    samples: 16
+    update_interval: 500ms
+    internal: true
+
+  - platform: adc
+    id: adc_hall
+    pin: ${pin_hall}
+    name: "ADC pince signal (V)"
+    attenuation: 12db
+    samples: 16
+    update_interval: 200ms
+    entity_category: diagnostic
+
+  - platform: adc
+    id: adc_hall_ref
+    pin: ${pin_hall_ref}
+    name: "ADC pince référence (V)"
+    attenuation: 12db
+    samples: 16
+    update_interval: 200ms
+    entity_category: diagnostic
+
+  # ----- mesure autonome -----
+  - platform: template
+    id: vbat_local
+    name: "Tension batterie locale"
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 500ms
+    lambda: |-
+      float v = id(adc_vbat).state;
+      if (isnan(v)) return NAN;
+      return v * id(cal_vbat_gain).state;
+    filters:
+      - sliding_window_moving_average:
+          window_size: 8
+          send_every: 2
+
+  - platform: template
+    id: ibat_local
+    name: "Courant batterie local"
+    unit_of_measurement: "A"
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: 200ms
+    lambda: |-
+      float s = id(adc_hall).state;
+      float r = id(adc_hall_ref).state;
+      if (isnan(s) || isnan(r)) return NAN;
+      float i = (s - r) * id(cal_clamp_gain).state - id(cal_clamp_zero).state;
+      return id(clamp_invert).state ? -i : i;
+    filters:
+      - sliding_window_moving_average:
+          window_size: 10
+          send_every: 5
+
+  # ----- SmartShunt BLE -----
+  - platform: victron_ble
+    victron_ble_id: smartshunt_ble
+    id: ble_v
+    name: "SmartShunt BLE tension"
+    type: BATTERY_VOLTAGE
+    filters:
+      - timeout: ${ble_timeout}
+
+  - platform: victron_ble
+    victron_ble_id: smartshunt_ble
+    id: ble_i
+    name: "SmartShunt BLE courant"
+    type: BATTERY_CURRENT
+    filters:
+      - timeout: ${ble_timeout}
+
+  # ----- SmartShunt via Home Assistant -----
+  - platform: homeassistant
+    id: ha_v
+    entity_id: ${ha_voltage_entity}
+    internal: true
+    filters:
+      - timeout: ${ha_timeout}
+
+  - platform: homeassistant
+    id: ha_i
+    entity_id: ${ha_current_entity}
+    internal: true
+    filters:
+      - timeout: ${ha_timeout}
+
+  # ----- aiguillage : ce que voit offsr -----
+  # Source perdue ou absurde (< 5 V) : tension publiée = 0 V -> offsr coupe la sortie.
+  - platform: template
+    id: bv
+    name: "Tension batterie (utilisée)"
+    unit_of_measurement: "V"
+    device_class: voltage
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: ${dispatch_interval}
+    lambda: |-
+      auto idx = id(source_mode).active_index();
+      float v = id(vbat_local).state;
+      if (idx.has_value() && *idx == 1) v = id(ble_v).state;
+      if (idx.has_value() && *idx == 2) v = id(ha_v).state;
+      if (isnan(v) || v < 5.0f) return 0.0f;
+      return v;
+
+  # Courant perdu : 0 A (sous la consigne -> offsr réduit la charge, sens sûr).
+  # Pas de publication tant que bv n'a jamais été publié (évite un calcul avec une tension NaN au démarrage).
+  - platform: template
+    id: bc_raw
+    name: "Courant batterie (utilisé)"
+    unit_of_measurement: "A"
+    device_class: current
+    state_class: measurement
+    accuracy_decimals: 2
+    update_interval: ${dispatch_interval}
+    lambda: |-
+      if (!id(bv).has_state()) return {};
+      auto idx = id(source_mode).active_index();
+      float i = id(ibat_local).state;
+      if (idx.has_value() && *idx == 1) i = id(ble_i).state;
+      if (idx.has_value() && *idx == 2) i = id(ha_i).state;
+      if (isnan(i)) return 0.0f;
+      return i;
+
+  - platform: copy
+    source_id: bc_raw
+    id: bc_smoothed
+    name: "Courant batterie (lissé)"
+    filters:
+      - sliding_window_moving_average:
+          window_size: ${smooth_window}
+          send_every: 1
+
+  # ----- offsr -----
+  - platform: offsrmini
+    offsr_id: my_offsr1
+    error:
+      name: "Routeur erreur de régulation"
+    output:
+      id: offsr_output
+      name: "Routeur sortie"
+      accuracy_decimals: 3
+    target:
+      id: offsr_target
+      name: "Routeur consigne courant"
+
+  # ----- température -----
+  - platform: dallas_temp
+    id: temp_ds
+    name: "Température DS18B20"
+    index: 0
+    update_interval: 10s
+
+  - platform: wifi_signal
+    name: "Signal Wi-Fi"
+    update_interval: 30s
+    entity_category: diagnostic
+
+  - platform: uptime
+    name: "Uptime"
+    entity_category: diagnostic
+
+binary_sensor:
+  - platform: status
+    name: "Statut ESP"
+
+  - platform: template
+    id: source_ok
+    name: "Source de mesure OK"
+    lambda: |-
+      return id(bv).has_state() && id(bv).state >= 5.0f;
+
+  - platform: template
+    id: overtemp
+    name: "Surchauffe"
+    device_class: heat
+    lambda: |-
+      if (isnan(id(temp_ds).state)) return false;
+      return id(temp_ds).state > id(cal_temp_max).state;
+    on_press:
+      - switch.turn_off: activation
+      - fan.turn_off: manual_power
+
+button:
+  - platform: restart
+    name: "Redémarrer"
