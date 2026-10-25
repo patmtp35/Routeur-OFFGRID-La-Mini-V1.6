@@ -1,5 +1,3 @@
-# Code de SeByDocKy recréé par prepare-offsr.sh : ne pas redistribuer (pas de licence amont)
-components/
 # Sorties de ESPHome et fichiers locaux
 .esphome/
 secrets.yaml

@@ -24,21 +24,20 @@ Broches (identiques au firmware d'origine) : triac GPIO27, passage par zéro GPI
 | Fichier | Rôle |
 |---|---|
 | `la-mini.yaml` | Configuration ESPHome complète. Tout se règle dans les `substitutions` en haut. Pas de `!secret`. |
-| `prepare-offsr.sh` | Crée `components/offsrmini` à partir du composant de Seby, adapté au 24 V. |
+| `components/offsrmini/` | Copie du composant `offsr` de Seby adaptée au 24 V. Les modifications sont listées dans [`MODIFICATIONS.md`](components/offsrmini/MODIFICATIONS.md), le diff exact est dans `offsrmini-vs-upstream.diff`. |
+| `prepare-offsr.sh` | Recrée `components/offsrmini` à partir de la dernière version de Seby, avec les mêmes modifications. Facultatif. |
 
-Le code de Seby n'est pas dans ce dépôt (il n'a pas de licence) : le script le récupère chez lui et le modifie localement. `components/` est dans le `.gitignore`.
+Le code de `offsrmini` est de SeByDocKy (commit `12fb7b5` de myESPhome, 25/10/2026) : le dépôt amont n'a pas de licence, donc les droits restent à son auteur. La logique de régulation n'est pas modifiée. Cette copie sera retirée si Seby le demande.
 
 ## Installation
 
-1. **Préparer le composant.** Dans le dossier du YAML : `./prepare-offsr.sh` (bash : Git Bash, WSL ou le terminal de Home Assistant). Il crée `components/offsrmini`. Le script prend des variables pour d'autres valeurs de départ :
+1. **Copier le dossier `components/offsrmini`** à côté de `la-mini.yaml` (dans le dossier de tes configs ESPHome, par exemple `/config/esphome/components/`). Il peut cohabiter avec un `components/offsr` existant sans y toucher.
+   Pour le recréer depuis la dernière version de Seby, ou avec d'autres valeurs de départ : `./prepare-offsr.sh` (bash : Git Bash, WSL ou le terminal de Home Assistant), par exemple
    `V_START=27.0 V_CHARGED=28.0 V_DISCH=27.6 OUT_MIN=0.0 SP_CHARGE=15.0 ./prepare-offsr.sh`
-   Sans bash, copie à la main `components/offsr` de myESPhome vers `components/offsrmini`, puis remplace `DEPENDENCIES = ["offsr"]` par `["offsrmini"]` dans les 5 sous-dossiers, les 4 défauts de tension / `output_min` / consigne de charge dans `offsr.h`, et les bornes des 3 tensions (20–32 V) dans `number/__init__.py`.
 2. **Renseigner le YAML** : `wifi_ssid` et `wifi_password`, et pour le SmartShunt en BLE `smartshunt_mac` et `smartshunt_bindkey` (VictronConnect, Produit, Infos, clé de chiffrement). Pour le mode via Home Assistant, `ha_voltage_entity` et `ha_current_entity`.
 3. **Compiler et flasher** (ESPHome Builder ou `esphome run`). Le premier flash se fait par USB.
 
 Ne publie jamais le YAML rempli avec tes vrais identifiants.
-
-Le composant porte un nom à part (`offsrmini`) pour cohabiter dans un même dossier `components/` avec un `offsr` déjà utilisé par un autre routeur sans y toucher.
 
 ## Sources de mesure
 
