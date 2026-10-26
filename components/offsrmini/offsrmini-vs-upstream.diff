@@ -1,6 +1,35 @@
+diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/__init__.py components/offsrmini/__init__.py
+--- upstream/components/offsr/__init__.py
++++ components/offsrmini/__init__.py
+@@ -17,6 +17,7 @@
+ CONF_BATTERY_VOLTAGE_ID = 'battery_voltage_id'
+ CONF_OUTPUT_ID = 'output_id'
+ CONF_POWER_ID = 'power_id'
++CONF_BATTERY_VOLTAGE = 'battery_voltage'
+ # CONF_OUTPUT_NEVER_ZERO = 'output_never_zero'
+ 
+ # PidUpdateAction = offsr_ns.class_('PidUpdateAction', automation.Action)
+@@ -35,6 +36,7 @@
+           cv.Required(CONF_BATTERY_VOLTAGE_ID): cv.use_id(sensor.Sensor),     
+           cv.Required(CONF_OUTPUT_ID): cv.use_id(output.FloatOutput),
+           cv.Optional(CONF_POWER_ID): cv.use_id(sensor.Sensor),
++          cv.Optional(CONF_BATTERY_VOLTAGE, default=24): cv.one_of(24, 48, int=True),
+ 		  # cv.Optional(CONF_OUTPUT_NEVER_ZERO, default=False): cv.boolean,
+         }
+     )
+@@ -59,3 +61,9 @@
+       
+     # if CONF_OUTPUT_NEVER_ZERO in config:
+     #     cg.add(var.set_output_never_zero(config[CONF_OUTPUT_NEVER_ZERO]))
++
++    # offsrmini : profil de batterie. 24 V : valeurs ci-dessous ; 48 V : valeurs d'origine de Seby.
++    if config[CONF_BATTERY_VOLTAGE] == 48:
++        cg.add(var.set_default_battery_voltages(53.0, 55.8, 55.6))
++    else:
++        cg.add(var.set_default_battery_voltages(27.0, 28.0, 27.6))
 diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/binary_sensor/__init__.py components/offsrmini/binary_sensor/__init__.py
---- upstream/components/offsr/binary_sensor/__init__.py	2026-10-25 19:20:09.246112146 +0100
-+++ components/offsrmini/binary_sensor/__init__.py	2026-10-25 21:03:53.445593825 +0100
+--- upstream/components/offsr/binary_sensor/__init__.py
++++ components/offsrmini/binary_sensor/__init__.py
 @@ -7,7 +7,7 @@
      DEVICE_CLASS_OCCUPANCY,
  )
@@ -11,8 +40,8 @@ diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/binary
  ICON_HOT_WATER_TANK = "mdi:water-boiler-alert"
  
 diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/number/__init__.py components/offsrmini/number/__init__.py
---- upstream/components/offsr/number/__init__.py	2026-10-25 19:28:47.773967020 +0100
-+++ components/offsrmini/number/__init__.py	2026-10-25 21:03:53.466097917 +0100
+--- upstream/components/offsr/number/__init__.py
++++ components/offsrmini/number/__init__.py
 @@ -11,7 +11,7 @@
      UNIT_VOLT,
  )
@@ -27,7 +56,7 @@ diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/number
    if starting_battery_voltage_config := config.get(CONF_STARTING_BATTERY_VOLTAGE):
          n = await number.new_number(
 -            starting_battery_voltage_config, min_value=45.0, max_value=60.0, step=0.1
-+            starting_battery_voltage_config, min_value=20.0, max_value=32.0, step=0.1
++            starting_battery_voltage_config, min_value=20.0, max_value=64.0, step=0.1
          )
          await cg.register_component(n, starting_battery_voltage_config)
          await cg.register_parented(n, offsr_component)
@@ -36,7 +65,7 @@ diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/number
    if charged_battery_voltage_config := config.get(CONF_CHARGED_BATTERY_VOLTAGE):
          n = await number.new_number(
 -            charged_battery_voltage_config, min_value=50.0, max_value=60.0, step=0.1
-+            charged_battery_voltage_config, min_value=20.0, max_value=32.0, step=0.1
++            charged_battery_voltage_config, min_value=20.0, max_value=64.0, step=0.1
          )
          await cg.register_component(n, charged_battery_voltage_config)
          await cg.register_parented(n, offsr_component)
@@ -45,14 +74,30 @@ diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/number
    if discharged_battery_voltage_config := config.get(CONF_DISCHARGED_BATTERY_VOLTAGE):
          n = await number.new_number(
 -            discharged_battery_voltage_config, min_value=45.0, max_value=60.0, step=0.1
-+            discharged_battery_voltage_config, min_value=20.0, max_value=32.0, step=0.1
++            discharged_battery_voltage_config, min_value=20.0, max_value=64.0, step=0.1
          )
          await cg.register_component(n, discharged_battery_voltage_config)
          await cg.register_parented(n, offsr_component)
 diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/offsr.h components/offsrmini/offsr.h
---- upstream/components/offsr/offsr.h	2026-10-25 19:20:09.246174270 +0100
-+++ components/offsrmini/offsr.h	2026-10-25 21:03:53.458970949 +0100
-@@ -176,20 +176,20 @@
+--- upstream/components/offsr/offsr.h
++++ components/offsrmini/offsr.h
+@@ -88,6 +88,15 @@
+   bool get_reverse(void){return this->current_reverse_;}
+ #endif
+ 
++  // offsrmini : valeurs de départ des 3 seuils de tension selon le profil de batterie (option `battery_voltage`).
++  // Appelé avant les entités number : sans valeur mémorisée en flash, ce sont ces valeurs qui s'appliquent.
++  void set_default_battery_voltages(float starting, float charged, float discharged) {
++#ifdef USE_NUMBER
++    this->current_starting_battery_voltage_ = starting;
++    this->current_charged_battery_voltage_ = charged;
++    this->current_discharged_battery_voltage_ = discharged;
++#endif
++  }
+ #ifdef USE_NUMBER
+   void set_charging_setpoint(float value) {this->current_charging_setpoint_ = value;}
+   float get_charging_setpoint(void){return this->current_charging_setpoint_;}
+@@ -176,7 +185,7 @@
  #endif  
    
  #ifdef USE_NUMBER  
@@ -61,15 +106,7 @@ diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/offsr.
    float current_absorbing_setpoint_ = 5.0f;
    float current_floating_setpoint_ = 0.0f;
    
--  float current_starting_battery_voltage_ = 53.0f;
--  float current_charged_battery_voltage_ = 55.8f;
--  float current_discharged_battery_voltage_ = 55.6f;
-+  float current_starting_battery_voltage_ = 27.0f;
-+  float current_charged_battery_voltage_ = 28.0f;
-+  float current_discharged_battery_voltage_ = 27.6f;
-   
-   float current_kp_ = 4.0f;
-   float current_ki_ = 0.0f;
+@@ -189,7 +198,7 @@
    float current_kd_ = 0.0f;
    
    float current_output_max_ = 0.85f;
@@ -79,8 +116,8 @@ diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/offsr.
  #endif
  
 diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/select/__init__.py components/offsrmini/select/__init__.py
---- upstream/components/offsr/select/__init__.py	2026-10-25 19:20:09.246174270 +0100
-+++ components/offsrmini/select/__init__.py	2026-10-25 21:03:53.444938969 +0100
+--- upstream/components/offsr/select/__init__.py
++++ components/offsrmini/select/__init__.py
 @@ -3,7 +3,7 @@
  from esphome.components import select
  from esphome.const import ENTITY_CATEGORY_CONFIG
@@ -91,8 +128,8 @@ diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/select
  from .. import CONF_OFFSR_ID, OFFSRComponent, offsr_ns
  
 diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/sensor/__init__.py components/offsrmini/sensor/__init__.py
---- upstream/components/offsr/sensor/__init__.py	2026-10-25 19:20:09.246488193 +0100
-+++ components/offsrmini/sensor/__init__.py	2026-10-25 21:03:53.444185239 +0100
+--- upstream/components/offsr/sensor/__init__.py
++++ components/offsrmini/sensor/__init__.py
 @@ -8,7 +8,7 @@
      UNIT_AMPERE,
  )
@@ -103,8 +140,8 @@ diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/sensor
  CONF_OUTPUT = "output"
  CONF_ERROR  = "error"
 diff -ruN --strip-trailing-cr -x testoffsr.yaml upstream/components/offsr/switch/__init__.py components/offsrmini/switch/__init__.py
---- upstream/components/offsr/switch/__init__.py	2026-10-25 19:20:09.246534918 +0100
-+++ components/offsrmini/switch/__init__.py	2026-10-25 21:03:53.444652717 +0100
+--- upstream/components/offsr/switch/__init__.py
++++ components/offsrmini/switch/__init__.py
 @@ -7,7 +7,7 @@
      ENTITY_CATEGORY_CONFIG,
  )

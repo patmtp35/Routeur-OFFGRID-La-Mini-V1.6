@@ -1,17 +1,18 @@
 ##############################################################################
-# LA MINI sous ESPHome : routeur solaire off-grid, batterie 24 V (Boisezon)
+# LA MINI sous ESPHome : routeur solaire off-grid, batterie 24 V ou 48 V (flag `battery_voltage` + jumper de la carte)
 # Matériel : PCB mini V1.0b (ESP32 Wemos D1 mini32, triac BTA41 + MOC3021S, pince Hall DC,
 #            diviseur de tension batterie, OLED SSD1306, DS18B20). Pas de PZEM, pas de sortie 2.
 # Régulation : composant `offsr` de SeByDocKy (PID sur le courant batterie, 3 consignes par zone de tension).
 #
 # MISE EN ROUTE
-#   1. ./prepare-offsr.sh          -> crée components/offsrmini (24 V, output_min = 0) ; components/offsr de l'autre routeur n'est pas touché
+#   1. components/offsrmini est dans le dépôt (./prepare-offsr.sh le recrée depuis Seby) ; components/offsr d'un autre routeur n'est pas touché
+#      Régler `battery_voltage` (24 ou 48) comme le jumper de la carte, avant de compiler.
 #   2. renseigner wifi_ssid / wifi_password plus bas (en clair : ne pas publier ce fichier rempli)
 #   3. premier flash par USB, banc d'essai : ampoule ou radiateur, JAMAIS la batterie réelle d'abord
 #   4. calibrer (voir plus bas), puis seulement activer `Routeur activation`
 #
 # CALIBRATION (valeurs de départ = estimations, pas des mesures)
-#   - Tension : comparer `Tension batterie locale` à un multimètre ; nouveau gain = gain x V_multimètre / V_affichée.
+#   - Tension : comparer `Tension batterie locale` à un multimètre ; nouvelle correction = correction x V_multimètre / V_affichée.
 #   - Zéro pince : câble batterie hors charge (courant nul vraiment), régler `Pince zéro` pour lire 0.00 A.
 #   - Gain pince : avec une charge connue (pince multimètre en série), nouveau gain = gain x I_réelle / I_affichée.
 #   - Sens : si la batterie CHARGE et que `Courant batterie` est négatif, activer `Pince sens inversé`.
@@ -47,8 +48,19 @@ substitutions:
   pin_sda: "GPIO21"
   pin_scl: "GPIO22"
 
+  # ---- tension de la batterie : 24 ou 48 ----
+  # DOIT correspondre au jumper de la carte (il choisit la résistance basse du diviseur de tension). Ce flag :
+  #   - fixe le gain du diviseur pour la mesure autonome ;
+  #   - fixe les seuils de départ d'offsr : 24 -> 27,0 / 28,0 / 27,6 V (gel 24 V) ; 48 -> 53,0 / 55,8 / 55,6 V (valeurs de Seby).
+  # Seuils déjà mémorisés en flash : non écrasés (les modifier dans l'interface).
+  battery_voltage: "24"
+  # Diviseur de la carte V1.0b (lu sur le schéma) : R haute = R4 20 k ; R basse selon le jumper : 12 V 4,7 k (R6), 24 V 2,2 k (R5), 48 V 1 k (R3).
+  vbat_r_high_k: "20.0"
+  vbat_r_low_24_k: "2.2"
+  vbat_r_low_48_k: "1.0"
+
   # ---- mesure autonome : valeurs de départ des réglages mémorisés ----
-  vbat_gain_default: "27.0"      # V batterie par volt ADC [Supposition : à calibrer]
+  vbat_corr_default: "1.0"       # facteur de correction de la tension, à calibrer au multimètre
   # Pince HSTS016L 20 A : 2,5 V ± 0,625 V pour ± 20 A -> 20 / 0,625 = 32 A par volt (valeur constructeur, à affiner).
   # Plage ADC utile ~ -19 A / +19 A : au-delà, l'ADC sature (~3,1 V) et la mesure est fausse sans erreur affichée.
   clamp_gain_default: "32.0"     # A par volt de signal différentiel (Hall - réf)
@@ -72,7 +84,7 @@ substitutions:
 esphome:
   name: ${name}
   friendly_name: ${friendly_name}
-  comment: "Routeur solaire off-grid 24 V - PCB mini V1.0b"
+  comment: "Routeur solaire off-grid ${battery_voltage} V - PCB mini V1.0b"
 
 esp32:
   board: wemos_d1_mini32
@@ -201,6 +213,7 @@ offsrmini:
     battery_current_id: bc_smoothed
     battery_voltage_id: bv
     output_id: dimmer
+    battery_voltage: ${battery_voltage}   # profil de seuils de départ : 24 ou 48 (même valeur que le jumper)
     # pas de power_id : pas de PZEM, la détection de coupure thermostat est désactivée
 
 ###################################
@@ -226,16 +239,23 @@ select:
     initial_option: "Autonome (pince + diviseur)"
     entity_category: config
 
+  # Multiplicateur de Kp/Ki/Kd (10 / 1 / 0.1 / 0.01), ajouté par Seby. Défaut 1 : ne change rien.
+  - platform: offsrmini
+    offsr_id: my_offsr1
+    coeff_multiplier:
+      name: "PID : multiplicateur (x)"
+      web_server: { sorting_weight: 130 }
+
 number:
   - platform: template
     id: cal_vbat_gain
-    name: "Tension : gain diviseur"
+    name: "Tension : correction (x)"
     optimistic: true
     restore_value: true
-    initial_value: ${vbat_gain_default}
-    min_value: 5.0
-    max_value: 60.0
-    step: 0.01
+    initial_value: ${vbat_corr_default}
+    min_value: 0.5
+    max_value: 2.0
+    step: 0.001
     mode: box
     entity_category: config
 
@@ -381,7 +401,9 @@ sensor:
     lambda: |-
       float v = id(adc_vbat).state;
       if (isnan(v)) return NAN;
-      return v * id(cal_vbat_gain).state;
+      // diviseur de la carte : tension ADC x (R haute + R basse) / R basse, R basse choisie par le jumper
+      const float r_low = (${battery_voltage} == 48) ? ${vbat_r_low_48_k} : ${vbat_r_low_24_k};
+      return v * ((${vbat_r_high_k} + r_low) / r_low) * id(cal_vbat_gain).state;
     filters:
       - sliding_window_moving_average:
           window_size: 8

@@ -88,6 +88,15 @@ SUB_SELECT(coeff_multiplier)
   bool get_reverse(void){return this->current_reverse_;}
 #endif
 
+  // offsrmini : valeurs de départ des 3 seuils de tension selon le profil de batterie (option `battery_voltage`).
+  // Appelé avant les entités number : sans valeur mémorisée en flash, ce sont ces valeurs qui s'appliquent.
+  void set_default_battery_voltages(float starting, float charged, float discharged) {
+#ifdef USE_NUMBER
+    this->current_starting_battery_voltage_ = starting;
+    this->current_charged_battery_voltage_ = charged;
+    this->current_discharged_battery_voltage_ = discharged;
+#endif
+  }
 #ifdef USE_NUMBER
   void set_charging_setpoint(float value) {this->current_charging_setpoint_ = value;}
   float get_charging_setpoint(void){return this->current_charging_setpoint_;}
@@ -180,9 +189,9 @@ SUB_SELECT(coeff_multiplier)
   float current_absorbing_setpoint_ = 5.0f;
   float current_floating_setpoint_ = 0.0f;
   
-  float current_starting_battery_voltage_ = 27.0f;
-  float current_charged_battery_voltage_ = 28.0f;
-  float current_discharged_battery_voltage_ = 27.6f;
+  float current_starting_battery_voltage_ = 53.0f;
+  float current_charged_battery_voltage_ = 55.8f;
+  float current_discharged_battery_voltage_ = 55.6f;
   
   float current_kp_ = 4.0f;
   float current_ki_ = 0.0f;
