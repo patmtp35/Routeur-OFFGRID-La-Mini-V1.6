@@ -92,7 +92,7 @@ Seuils de départ pour un pool **gel 24 V** : démarrage 27,0 V, « déchargée 
 
 Règle pour « Tension seuil chargée » : **l'absorption la plus basse de tes chargeurs moins 0,2 V**, relevée par grand froid. Au-dessus de ce seuil, le routeur vise 0 A de courant net et détourne tout le courant de charge. Un seuil trop bas empêche le pool de finir son absorption, ce qui use vite un gel. Un chargeur à compensation de température monte d'environ 36 mV par °C sur un pack gel 24 V : un garage à 5 °C au lieu de 25 °C ajoute environ 0,7 V.
 
-Le PID part de Kp 4, Ki 0, Kd 0 (valeurs de Seby). En mode incrémental, la sortie varie à chaque seconde de `0,001 × Kp × multiplicateur × erreur` (erreur = courant − consigne) : 0,0072 par seconde pour 1,8 A d'erreur. Le sélecteur « PID : multiplicateur (x) » (10 / 1 / 0,1 / 0,01, défaut 1) multiplie Kp, Ki et Kd : à utiliser si la régulation oscille ou réagit trop lentement. `output_min` à 0 est nécessaire avec un triac : avec la valeur d'origine de 0,18, la sortie ne descendrait jamais sous 18 %.
+Le PID part de Kp 4, Ki 0, Kd 0 (valeurs de Seby). En mode incrémental, la sortie varie à chaque seconde de `0,001 × Kp × multiplicateur × erreur` (erreur = courant − consigne) : 0,0072 par seconde pour 1,8 A d'erreur. Le sélecteur « PID : multiplicateur (x) » (10 / 1 / 0,1 / 0,01, défaut 1) multiplie Kp, Ki et Kd : à utiliser si la régulation oscille ou réagit trop lentement. Avec un radiateur de 1000 W derrière un onduleur-chargeur dont la réaction prend 10 s ou plus, **le défaut 1 oscille (période d'environ 40 s) et 0,1 est stable** (voir « Ce qui est vérifié »). Pars de 0,1 si le courant de la batterie répond avec du retard à la charge du routeur. `output_min` à 0 est nécessaire avec un triac : avec la valeur d'origine de 0,18, la sortie ne descendrait jamais sous 18 %.
 
 ## Entités principales
 
@@ -128,14 +128,18 @@ Vérifié (banc du 26/10/2026 : batterie LiFePO4 48 V, SmartShunt en BLE, flag `
 - Lecture du SmartShunt en BLE ; gain du diviseur ×21 en position 48 V, contrôlé sur le journal.
 - Sécurité sur source perdue : sans batterie sur le diviseur, la tension utilisée tombe à 0 V et la sortie reste à 0.
 - Triac et passage par zéro sur charge : l'ampoule s'éclaire plus ou moins fort selon « Puissance manuelle » (observation visuelle, sans mesure de puissance).
-- Régulation avec la source SmartShunt : l'erreur positive fait monter la sortie à la vitesse prévue (0,0072 par seconde pour 1,8 A d'erreur, 13 mesures consécutives), l'erreur négative la laisse à 0. L'effet de l'ampoule sur le courant de charge est noyé dans les variations du solaire : l'équilibre autour d'une consigne n'est pas démontré.
+- Régulation avec la source SmartShunt : l'erreur positive fait monter la sortie à la vitesse prévue (0,0072 par seconde pour 1,8 A d'erreur, 13 mesures consécutives), l'erreur négative la laisse à 0. Avec l'ampoule de 50 W, son effet sur le courant de charge est noyé dans les variations du solaire : l'équilibre autour d'une consigne n'a été démontré qu'avec le radiateur de 1000 W (voir plus bas).
+- Régulation sous charge réelle, avec un radiateur bain d'huile de 1000 W (thermostat mécanique en position 1) sur la sortie triac, batterie LiFePO4 48 V derrière un MultiPlus-II, source SmartShunt, consigne de charge 15 A :
+  - **Multiplicateur à 1 (défaut) : la régulation oscille.** La batterie met au moins 10 s à réagir à un changement de puissance du radiateur (dynamique du chargeur de l'onduleur). Avec un pas de 0,0072 par seconde pour 1,8 A d'erreur, la sortie fait des allers-retours entre 0,03 et 0,85 avec une période d'environ 40 s, et le courant net passe de −24 à +30 A.
+  - **Multiplicateur à 0,1 : la régulation est stable.** Le courant converge vers la consigne et reste entre 15,3 et 15,4 A avec une sortie voisine de 0,66 (relevé de 11:04). Sur les 20 minutes suivantes, la sortie reste entre 0,58 et 0,73 sans oscillation.
+  - Pendant ce test, la maison a imposé des variations de charge d'environ 2 kW (cycle de la machine à laver, appareil de cuisine non mesuré, nuages sur le solaire). Le courant a dévié de −15 à +29 A, puis la sortie est revenue autour de 0,6 en moins de 2 minutes, sans oscillation entretenue. Quand la machine à laver s'est arrêtée (environ 200 W en moins), le courant net a monté de 3,8 A, ce qu'on attend.
 - Pince Hall : avec « Pince : sens inversé » activé sur cette installation, le gain de départ de 32 A/V donne +13,7 A en moyenne (60 mesures) pour 13,3 A au SmartShunt, soit environ 3 % d'écart.
 
 Non testé :
 
 - Le pool 24 V gel réel et le profil 24 V (seuils 27,0 / 28,0 / 27,6 V).
 - Le diviseur avec le moins de la batterie relié à la masse de la carte (voir Calibration).
-- La régulation sous charge réelle (radiateur de 1000 W), l'équilibre autour d'une consigne avec un courant stable, le réglage du PID, le mode « SmartShunt via HA ».
+- La régulation sur la charge réelle du pool (24 V, gel), le réglage fin du PID (seul le multiplicateur à 0,1 a été essayé, Ki et Kd sont à 0), sur une durée de plus de quelques heures, et le mode « SmartShunt via HA ».
 - Les seuils de tension pour une batterie LiFePO4 : les valeurs 48 V (53,0 / 55,8 / 55,6 V) sont celles de Seby, pas calculées pour ce type de batterie.
 
 Limites connues :
