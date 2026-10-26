@@ -26,6 +26,7 @@ Broches (identiques au firmware d'origine) : triac GPIO27, passage par zéro GPI
 | `la-mini.yaml` | Configuration ESPHome complète. Tout se règle dans les `substitutions` en haut. Pas de `!secret`. |
 | `components/offsrmini/` | Copie du composant `offsr` de Seby adaptée au 24 V et au 48 V (option `battery_voltage`). Les modifications sont listées dans [`MODIFICATIONS.md`](components/offsrmini/MODIFICATIONS.md), le diff exact est dans `offsrmini-vs-upstream.diff`. |
 | `prepare-offsr.sh` | Recrée `components/offsrmini` à partir de la dernière version de Seby, avec les mêmes modifications. Facultatif. |
+| `docs/` | Capture de l'interface web pendant le banc du 26/10/2026 (preuve de concept). |
 
 Le code de `offsrmini` est de SeByDocKy (commit `12fb7b5` de myESPhome, 25/10/2026) : le dépôt amont n'a pas de licence, donc les droits restent à son auteur. La logique de régulation n'est pas modifiée. Cette copie sera retirée si Seby le demande.
 
@@ -107,6 +108,17 @@ Le PID part de Kp 4, Ki 0, Kd 0 (valeurs de Seby). En mode incrémental, la sort
 3. Triac : `Routeur gel de la régulation` ON, monter doucement `Puissance manuelle`, la remettre à 0 ensuite.
 4. Régulation : `Routeur gel de la régulation` OFF, vérifier le sens du courant, puis `Routeur activation` ON.
 5. Ne passer sur la batterie réelle qu'après avoir vérifié que la sortie tombe à 0 quand la source est coupée.
+
+## Preuve de concept
+
+![Interface web de la mini pendant le banc du 26/10/2026](docs/poc-interface-web-2026-10-26.png)
+
+Capture de l'interface web de la carte pendant le banc du 26/10/2026 : batterie LiFePO4 48 V, SmartShunt en BLE, ampoule à filament de 50 W sur la sortie triac, flag `battery_voltage: "48"`.
+
+- Source « SmartShunt BLE » : 53,67 V et 19,2 A, repris tels quels par `offsr` (« utilisé »).
+- « Routeur activation » ON, consigne de charge 13,5 A, erreur +5,56 A, **sortie à 0,850** (la valeur de « Sortie max ») : la chaîne SmartShunt, `offsrmini`, triac, charge fonctionne de bout en bout. L'erreur dépasse ce qu'une ampoule de 50 W peut absorber, donc la sortie est collée au maximum : ce n'est pas la preuve d'un équilibre de régulation.
+- Les seuils de tension y sont encore ceux de Seby (53,0 / 55,6 / 55,8 V), pas adaptés à cette LiFePO4.
+- « Pince : sens inversé » ON : le courant local (11,1 A) est bruité. La tension locale (28,6 V) est fausse parce que le moins de la batterie n'est pas relié à la masse de la carte ; sans effet, la source est le SmartShunt.
 
 ## Ce qui est vérifié, ce qui ne l'est pas
 
