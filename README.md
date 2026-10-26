@@ -111,9 +111,9 @@ Le PID part de Kp 4, Ki 0, Kd 0 (valeurs de Seby). En mode incrémental, la sort
 
 ## Preuve de concept
 
-![La Mini Boisezon dans Home Assistant, banc du 26/10/2026](docs/poc-home-assistant-2026-10-26.png)
+![La Mini Boissezon dans Home Assistant, banc du 26/10/2026](docs/poc-home-assistant-2026-10-26.png)
 
-Page de l'appareil « La Mini Boisezon » dans Home Assistant (intégration ESPHome, API sans chiffrement) pendant le banc du 26/10/2026 : batterie LiFePO4 48 V, SmartShunt en BLE, ampoule à filament de 50 W sur la sortie triac, flag `battery_voltage: "48"`. L'adresse MAC est masquée sur la capture.
+Page de l'appareil « La Mini Boissezon » dans Home Assistant (intégration ESPHome, API sans chiffrement) pendant le banc du 26/10/2026 : batterie LiFePO4 48 V, SmartShunt en BLE, ampoule à filament de 50 W sur la sortie triac, flag `battery_voltage: "48"`. L'adresse MAC est masquée sur la capture.
 
 - Toutes les entités de la carte remontent dans HA : contrôles (puissance manuelle), capteurs, configuration (consignes, seuils, PID, calibration, source de mesure) et diagnostic.
 - Source « SmartShunt BLE », « Routeur activation » ON, « Pince : sens inversé » ON. Les seuils de tension sont réglés pour cette LiFePO4 (54,7 V chargée, 54,5 V déchargée) au lieu de ceux de Seby.
