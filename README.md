@@ -47,6 +47,11 @@ La carte a un **jumper** qui choisit la résistance basse de son diviseur de ten
 - **Mesure autonome** : le gain du diviseur est calculé d'après le schéma de la carte V1.0b (R haute 20 kΩ ; R basse 2,2 kΩ pour le 24 V, 1 kΩ pour le 48 V), soit un rapport d'environ 10,1 en 24 V et 21 en 48 V. Les valeurs sont dans les `substitutions` (`vbat_r_high_k`, `vbat_r_low_24_k`, `vbat_r_low_48_k`).
 - **Seuils de départ d'`offsr`** : 24 → 27,0 / 28,0 / 27,6 V ; 48 → 53,0 / 55,8 / 55,6 V (valeurs d'origine de Seby). Un seuil déjà mémorisé en flash n'est pas écrasé : le modifier dans l'interface.
 
+> [!CAUTION]
+> **Changer `battery_voltage` et recompiler ne change pas les réglages déjà enregistrés dans la carte.** Seuils de tension, consignes de courant, Kp/Ki/Kd, multiplicateur, sorties min et max, et interrupteurs (dont « Routeur activation ») sont restaurés depuis la flash après une mise à jour OTA. Une carte réglée en 48 V (démarrage 53,0 V) qui passe en 24 V ne démarre donc jamais : la tension du pool reste sous le seuil de démarrage et la sortie est forcée à 0. Inversement, des seuils trop bas ou trop hauts pour la batterie empêchent le routeur de finir l'absorption.
+>
+> Après un changement de profil : mettre « Routeur activation » sur OFF, ressaisir les trois seuils de tension, vérifier les consignes de courant et le multiplicateur, contrôler la tension affichée au multimètre, puis seulement réactiver.
+
 Le 12 V n'est pas géré par le flag. La mesure ne couvre qu'environ 31 V en position 24 V et 65 V en position 48 V (entrée ADC limitée à ~3,1 V).
 
 Si le flag et le jumper ne correspondent pas, la tension affichée est fausse d'un facteur ~2 : la sécurité « source perdue » ne le détecte pas.
