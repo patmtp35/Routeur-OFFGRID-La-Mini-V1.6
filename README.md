@@ -28,7 +28,7 @@ Broches (identiques au firmware d'origine) : triac GPIO27, passage par zéro GPI
 | `prepare-offsr.sh` | Recrée `components/offsrmini` à partir de la dernière version de Seby, avec les mêmes modifications. Facultatif. |
 | `docs/` | Capture de la page de l'appareil dans Home Assistant pendant le banc du 26/10/2026 (preuve de concept). |
 
-Le code de `offsrmini` est de SeByDocKy (commit `12fb7b5` de myESPhome, 25/10/2026) : le dépôt amont n'a pas de licence, donc les droits restent à son auteur. La logique de régulation n'est pas modifiée. Cette copie sera retirée si Seby le demande.
+Le code de `offsrmini` est de SeByDocKy (commit `12fb7b5` de myESPhome, 25/10/2026) : le dépôt amont est sous licence MIT depuis le 28/10/2026 (texte dans `components/offsrmini/LICENSE`, à conserver avec toute copie). La logique de régulation n'est pas modifiée.
 
 ## Installation
 
@@ -155,6 +155,12 @@ Limites connues :
 - Pas de détection de coupure de thermostat (elle demande un PZEM, absent ici).
 - La police de l'écran est téléchargée au moment de la compilation (`gfonts://Roboto`) : il faut un accès internet à ce moment-là.
 - Wi-Fi en clair dans le YAML, OTA sans mot de passe, API sans chiffrement : choix « sans secret », pensé pour un réseau local.
+
+## Licence
+
+Ce dépôt est sous licence **MIT** (fichier `LICENSE` à la racine) : `la-mini.yaml`, le README, `prepare-offsr.sh` et les modifications apportées à `offsrmini`.
+
+Le dossier `components/offsrmini` est une copie adaptée du composant `offsr` de SeByDocKy, lui aussi sous licence MIT (« Copyright (c) 2026 e-2-nomy »). Son texte est dans `components/offsrmini/LICENSE` et doit rester avec toute copie de ce dossier.
 
 ## Crédits
 

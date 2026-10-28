@@ -29,7 +29,7 @@ fi
 
 # les fichiers de documentation de ce dépôt survivent à la régénération
 mkdir -p "$tmp/doc"
-for f in MODIFICATIONS.md offsrmini-vs-upstream.diff; do
+for f in MODIFICATIONS.md offsrmini-vs-upstream.diff LICENSE; do
   [ -f "components/offsrmini/$f" ] && cp "components/offsrmini/$f" "$tmp/doc/$f"
 done
 rm -rf components/offsrmini
@@ -103,5 +103,7 @@ print("OK")
 PY
 
 cp "$tmp/doc/"* components/offsrmini/ 2>/dev/null || true
+# licence MIT de l'amont (à la racine de myESPhome) : la version la plus récente remplace celle qui a été conservée
+[ -f "$src/../../LICENSE" ] && cp "$src/../../LICENSE" components/offsrmini/LICENSE || true
 
 echo "OK : components/offsrmini prêt (profil 24 V : ${V24_START} / ${V24_CHARGED} / ${V24_DISCH} V, output_min ${OUT_MIN}, consigne charge ${SP_CHARGE} A)"

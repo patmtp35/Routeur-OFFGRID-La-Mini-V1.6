@@ -4,7 +4,7 @@ Copie du composant `offsr` de **SeByDocKy**, adaptée à un pack de batteries 24
 
 - Source : [SeByDocKy/myESPhome](https://github.com/SeByDocKy/myESPhome), dossier `components/offsr`
 - Version copiée : commit `12fb7b56ea32077d93d7dc2d2706528b0caa9113` (25/10/2026)
-- Licence amont : aucune au moment de la copie. Les droits sur le code restent à son auteur. Cette copie est fournie pour faciliter l'usage de `la-mini.yaml` ; elle sera retirée si l'auteur le demande.
+- Licence amont : **MIT**, ajoutée par Seby le 28/10/2026 (commit `ba9dccb` de myESPhome, « Copyright (c) 2026 e-2-nomy »). Le texte est dans `LICENSE` à côté de ces fichiers et doit rester avec toute copie. Le code de `components/offsr` est identique entre le commit copié (`12fb7b5`) et cette version.
 
 **La logique de régulation n'est pas modifiée** : `offsr.cpp`, les `.cpp` et `.h` des sous-composants, et tous les autres fichiers sont identiques à l'original (hors fins de ligne), sauf ceux du tableau ci-dessous.
 
